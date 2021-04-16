@@ -7,4 +7,5 @@ This bot develop based on the original [MusicBot repo](https://github.com/Just-S
 
 ---
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/WIwKFkh-PnA" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+Song of DJ Yok
+[![คุณหยกครับ](https://img.youtube.com/vi/WIwKFkh-PnA/0.jpg)](https://www.youtube.com/watch?v=WIwKFkh-PnA "คุณหยกครับ")
