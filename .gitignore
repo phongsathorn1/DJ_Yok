@@ -5,6 +5,7 @@
 
 audio_cache/
 dectalk/
+discord_env/
 
 discord.log
 logs/
