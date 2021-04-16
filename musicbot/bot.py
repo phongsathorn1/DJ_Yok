@@ -87,6 +87,7 @@ class MusicBot(discord.Client):
         self.aiolocks = defaultdict(asyncio.Lock)
         self.downloader = downloader.Downloader(download_folder='audio_cache')
 
+        log.info('discord.py version {}'.format(discord.__version__))
         log.info('Starting MusicBot {}'.format(BOTVERSION))
 
         if not self.autoplaylist:
@@ -470,6 +471,7 @@ class MusicBot(discord.Client):
         channel = entry.meta.get('channel', None)
         author = entry.meta.get('author', None)
 
+        newmsg = None
         if channel and author:
             author_perms = self.permissions.for_user(author)
 
@@ -480,13 +482,13 @@ class MusicBot(discord.Client):
             elif self.config.now_playing_mentions:
                 newmsg = '%s - your song `%s` is now playing in `%s`!' % (
                     entry.meta['author'].mention, entry.title, player.voice_client.channel.name)
-            else:
-                newmsg = 'Now playing in `%s`: `%s` added by `%s`' % (
-                    player.voice_client.channel.name, entry.title, entry.meta['author'].name)
-        else:
+            # else:
+            #     newmsg = 'Now playing in `%s`: `%s` added by `%s`' % (
+            #         player.voice_client.channel.name, entry.title, entry.meta['author'].name)
+        # else:
             # no author (and channel), it's an autoplaylist (or autostream from my other PR) entry.
-            newmsg = 'Now playing automatically added entry `%s` in `%s`' % (
-                entry.title, player.voice_client.channel.name)
+            # newmsg = 'Now playing automatically added entry `%s` in `%s`' % (
+            #     entry.title, player.voice_client.channel.name)
 
         if newmsg:
             if self.config.dm_nowplaying and author:
@@ -531,6 +533,7 @@ class MusicBot(discord.Client):
     async def on_player_stop(self, player, **_):
         log.debug('Running on_player_stop')
         await self.update_now_playing_status()
+        await self.update_default_status()
 
     async def on_player_finished_playing(self, player, **_):
         log.debug('Running on_player_finished_playing')
@@ -634,27 +637,44 @@ class MusicBot(discord.Client):
         else:
             log.exception("Player error", exc_info=ex)
 
+    async def update_default_status(self):
+        game = None
+        if self.config.status_message:
+            game = discord.Game(type=0, name=self.config.status_message.strip()[:128])
+            # game = discord.Activity(type=discord.ActivityType.custom, name=self.config.status_message.strip()[:128])
+
+            async with self.aiolocks[_func_()]:
+                if game != self.last_status:
+                    await self.change_presence(activity=game)
+                    self.last_status = game
+
     async def update_now_playing_status(self, entry=None, is_paused=False):
         game = None
 
-        if not self.config.status_message:
-            if self.user.bot:
-                activeplayers = sum(1 for p in self.players.values() if p.is_playing)
-                if activeplayers > 1:
-                    game = discord.Game(type=0, name="music on %s guilds" % activeplayers)
-                    entry = None
+        # if not self.config.status_message:
+        if self.user.bot:
+            activeplayers = sum(1 for p in self.players.values() if p.is_playing)
+            if activeplayers > 1:
+                game = discord.Game(type=0, name="music on %s guilds" % activeplayers)
+                entry = None
 
-                elif activeplayers == 1:
-                    player = discord.utils.get(self.players.values(), is_playing=True)
-                    entry = player.current_entry
+            elif activeplayers == 1:
+                player = discord.utils.get(self.players.values(), is_playing=True)
+                entry = player.current_entry
 
-            if entry:
-                prefix = u'\u275A\u275A ' if is_paused else ''
+        if entry:
+            prefix = u'\u275A\u275A ' if is_paused else ''
 
-                name = u'{}{}'.format(prefix, entry.title)[:128]
-                game = discord.Game(type=0, name=name)
-        else:
-            game = discord.Game(type=0, name=self.config.status_message.strip()[:128])
+            name = u'{}{}'.format(prefix, entry.title)[:128]
+            # game = discord.Game(type=0, name=name)
+            game = discord.Activity(
+                type=discord.ActivityType.listening, 
+                name=name,
+                url=entry.url,
+            )
+
+        # else:
+        #     game = discord.Game(type=0, name=self.config.status_message.strip()[:128])
 
         async with self.aiolocks[_func_()]:
             if game != self.last_status:
@@ -898,6 +918,7 @@ class MusicBot(discord.Client):
 
     # noinspection PyMethodOverriding
     def run(self):
+        # print(self.start)
         try:
             self.loop.run_until_complete(self.start(*self.config.auth))
 
@@ -1094,6 +1115,7 @@ class MusicBot(discord.Client):
         print(flush=True)
 
         await self.update_now_playing_status()
+        await self.update_default_status()
 
         # maybe option to leave the ownerid blank and generate a random command for the owner to use
         # wait_for_message is pretty neato
@@ -1113,8 +1135,9 @@ class MusicBot(discord.Client):
         """Provides a basic template for embeds"""
         e = discord.Embed()
         e.colour = 7506394
-        e.set_footer(text='Just-Some-Bots/MusicBot ({})'.format(BOTVERSION), icon_url='https://i.imgur.com/gFHBoZA.png')
-        e.set_author(name=self.user.name, url='https://github.com/Just-Some-Bots/MusicBot', icon_url=self.user.avatar_url)
+        e.set_author(name=self.user.name, icon_url=self.user.avatar_url)
+        # e.set_footer(text='Just-Some-Bots/MusicBot ({})'.format(BOTVERSION), icon_url='https://i.imgur.com/gFHBoZA.png')
+        # e.set_author(name=self.user.name, url='https://github.com/Just-Some-Bots/MusicBot', icon_url=self.user.avatar_url)
         return e
 
     async def cmd_resetplaylist(self, player, channel):
@@ -1164,8 +1187,11 @@ class MusicBot(discord.Client):
             await self.gen_cmd_list(message)
 
         desc = '```\n' + ', '.join(self.commands) + '\n```\n' + self.str.get(
-            'cmd-help-response', 'For information about a particular command, run `{}help [command]`\n'
-                                 'For further help, see https://just-some-bots.github.io/MusicBot/').format(prefix)
+            'cmd-help-response', 'For information about a particular command, run `{}help [command]`').format(prefix)
+
+        # desc = '```\n' + ', '.join(self.commands) + '\n```\n' + self.str.get(
+        #     'cmd-help-response', 'For information about a particular command, run `{}help [command]`\n'
+        #                          'For further help, see https://just-some-bots.github.io/MusicBot/').format(prefix)
         if not self.is_all:
             desc += self.str.get('cmd-help-all', '\nOnly showing commands you can use, for a list of all commands, run `{}help all`').format(prefix)
 
@@ -1300,7 +1326,26 @@ class MusicBot(discord.Client):
             )
         return True
 
-    async def cmd_play(self, message, player, channel, author, permissions, leftover_args, song_url):
+    async def cmd_playtop(self, message, player, channel, author, permissions, leftover_args, song_url):
+        """
+        Usage:
+            {command_prefix}playtop song_link
+            {command_prefix}playtop text to search for
+            {command_prefix}playtop spotify_uri
+
+        Adds the song to the top of playlist (next to current song).
+ 
+        If a link is not provided, 
+        the first result from a youtube search is added to the queue.
+
+        For Spotify URIs, 
+        it will use the metadata (e.g song name and artist) to find a YouTube
+        equivalent of the song. Streaming from Spotify is not possible.
+        """
+
+        return await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url, head=True)
+
+    async def cmd_play(self, message, player, channel, author, permissions, leftover_args, song_url, head=False):
         """
         Usage:
             {command_prefix}play song_link
@@ -1310,10 +1355,20 @@ class MusicBot(discord.Client):
         Adds the song to the playlist.  If a link is not provided, the first
         result from a youtube search is added to the queue.
 
-        If enabled in the config, the bot will also support Spotify URIs, however
+        For Spotify URIs, 
         it will use the metadata (e.g song name and artist) to find a YouTube
         equivalent of the song. Streaming from Spotify is not possible.
         """
+
+        print('Add left', head)
+        if isinstance(head, bool):
+            head = True
+        else:
+            head = False
+
+        print('Add left 2', head)
+
+        # await self.cmd_summon(channel, guild, author, voice_channel)
 
         song_url = song_url.strip('<>')
 
@@ -1356,6 +1411,7 @@ class MusicBot(discord.Client):
                             log.debug('Processing {0}'.format(song_url))
                             await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url)
                         await self.safe_delete_message(procmesg)
+
                         return Response(self.str.get('cmd-play-spotify-album-queued', "Enqueued `{0}` with **{1}** songs.").format(res['name'], len(res['tracks']['items'])))
                     
                     elif 'playlist' in parts:
@@ -1463,8 +1519,13 @@ class MusicBot(discord.Client):
                     return
 
                 # TODO: handle 'webpage_url' being 'ytsearch:...' or extractor type
-                song_url = info['entries'][0]['webpage_url']
-                info = await self.downloader.extract_info(player.playlist.loop, song_url, download=False, process=False)
+                try:
+                    song_url = info['entries'][0]['webpage_url']
+                    info = await self.downloader.extract_info(player.playlist.loop, song_url, download=False, process=False)
+                except:
+                    raise exceptions.ExtractionError(
+                        "Cannot extract song info. Please try again later..."
+                    )
                 # Now I could just do: return await self.cmd_play(player, channel, author, song_url)
                 # But this is probably fine
 
@@ -1558,7 +1619,7 @@ class MusicBot(discord.Client):
                         expire_in=30
                     )
 
-                entry, position = await player.playlist.add_entry(song_url, channel=channel, author=author)
+                entry, position = await player.playlist.add_entry(song_url, channel=channel, head=head, author=author)
 
                 reply_text = self.str.get('cmd-play-song-reply', "Enqueued `%s` to be played. Position in queue: %s")
                 btext = entry.title
@@ -2014,21 +2075,21 @@ class MusicBot(discord.Client):
 
         if user_mentions:
             for user in user_mentions:
-                if permissions.remove or author == user:
-                    try:
-                        entry_indexes = [e for e in player.playlist.entries if e.meta.get('author', None) == user]
-                        for entry in entry_indexes:
-                            player.playlist.entries.remove(entry)
-                        entry_text = '%s ' % len(entry_indexes) + 'item'
-                        if len(entry_indexes) > 1:
-                            entry_text += 's'
-                        return Response(self.str.get('cmd-remove-reply', "Removed `{0}` added by `{1}`").format(entry_text, user.name).strip())
+                # if permissions.remove or author == user:
+                try:
+                    entry_indexes = [e for e in player.playlist.entries if e.meta.get('author', None) == user]
+                    for entry in entry_indexes:
+                        player.playlist.entries.remove(entry)
+                    entry_text = '%s ' % len(entry_indexes) + 'item'
+                    if len(entry_indexes) > 1:
+                        entry_text += 's'
+                    return Response(self.str.get('cmd-remove-reply', "Removed `{0}` added by `{1}`").format(entry_text, user.name).strip())
 
-                    except ValueError:
-                        raise exceptions.CommandError(self.str.get('cmd-remove-missing', "Nothing found in the queue from user `%s`") % user.name, expire_in=20)
+                except ValueError:
+                    raise exceptions.CommandError(self.str.get('cmd-remove-missing', "Nothing found in the queue from user `%s`") % user.name, expire_in=20)
 
-                raise exceptions.PermissionsError(
-                    self.str.get('cmd-remove-noperms', "You do not have the valid permissions to remove that entry from the queue, make sure you're the one who queued it or have instant skip permissions"), expire_in=20)
+                # raise exceptions.PermissionsError(
+                #     self.str.get('cmd-remove-noperms', "You do not have the valid permissions to remove that entry from the queue, make sure you're the one who queued it or have instant skip permissions"), expire_in=20)
 
         if not index:
             index = len(player.playlist.entries)
@@ -2041,17 +2102,17 @@ class MusicBot(discord.Client):
         if index > len(player.playlist.entries):
             raise exceptions.CommandError(self.str.get('cmd-remove-invalid', "Invalid number. Use {}queue to find queue positions.").format(self.config.command_prefix), expire_in=20)
 
-        if permissions.remove or author == player.playlist.get_entry_at_index(index - 1).meta.get('author', None):
-            entry = player.playlist.delete_entry_at_index((index - 1))
-            await self._manual_delete_check(message)
-            if entry.meta.get('channel', False) and entry.meta.get('author', False):
-                return Response(self.str.get('cmd-remove-reply-author', "Removed entry `{0}` added by `{1}`").format(entry.title, entry.meta['author'].name).strip())
-            else:
-                return Response(self.str.get('cmd-remove-reply-noauthor', "Removed entry `{0}`").format(entry.title).strip())
+        # if permissions.remove or author == player.playlist.get_entry_at_index(index - 1).meta.get('author', None):
+        entry = player.playlist.delete_entry_at_index((index - 1))
+        await self._manual_delete_check(message)
+        if entry.meta.get('channel', False) and entry.meta.get('author', False):
+            return Response(self.str.get('cmd-remove-reply-author', "Removed entry `{0}` added by `{1}`").format(entry.title, entry.meta['author'].name).strip())
         else:
-            raise exceptions.PermissionsError(
-                self.str.get('cmd-remove-noperms', "You do not have the valid permissions to remove that entry from the queue, make sure you're the one who queued it or have instant skip permissions"), expire_in=20
-            )
+            return Response(self.str.get('cmd-remove-reply-noauthor', "Removed entry `{0}`").format(entry.title).strip())
+        # else:
+        #     raise exceptions.PermissionsError(
+        #         self.str.get('cmd-remove-noperms', "You do not have the valid permissions to remove that entry from the queue, make sure you're the one who queued it or have instant skip permissions"), expire_in=20
+        #     )
 
     async def cmd_skip(self, player, channel, author, message, permissions, voice_channel, param=''):
         """
@@ -2731,6 +2792,9 @@ class MusicBot(discord.Client):
                 handler_kwargs['guild'] = message.guild
 
             if params.pop('player', None):
+                voice_channel = message.guild.me.voice.channel if message.guild.me.voice else None
+                await self.cmd_summon(message.channel, message.guild, message.author, voice_channel)
+                
                 handler_kwargs['player'] = await self.get_player(message.channel)
 
             if params.pop('_player', None):

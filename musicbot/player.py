@@ -7,7 +7,7 @@ import audioop
 import subprocess
 import re
 
-from discord import FFmpegPCMAudio, PCMVolumeTransformer, AudioSource
+from discord import FFmpegPCMAudio, PCMVolumeTransformer, AudioSource, FFmpegOpusAudio
 
 from enum import Enum
 from array import array
@@ -292,17 +292,20 @@ class MusicPlayer(EventEmitter, Serializable):
 
                 log.ffmpeg("Creating player with options: {} {} {}".format(boptions, aoptions, entry.filename))
 
-                self._source = SourcePlaybackCounter(
-                    PCMVolumeTransformer(
-                        FFmpegPCMAudio(
+                ffmpeg_audio = FFmpegPCMAudio(
                             entry.filename,
                             before_options=boptions,
                             options=aoptions,
                             stderr=subprocess.PIPE
-                        ),
+                        )
+
+                self._source = SourcePlaybackCounter(
+                    PCMVolumeTransformer(
+                        ffmpeg_audio,
                         self.volume
                     )
                 )
+
                 log.debug('Playing {0} using {1}'.format(self._source, self.voice_client))
                 self.voice_client.play(self._source, after=self._playback_finished)
 
