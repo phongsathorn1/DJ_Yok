@@ -1360,22 +1360,11 @@ class MusicBot(discord.Client):
         equivalent of the song. Streaming from Spotify is not possible.
         """
 
-        print('Add left', head)
-        if isinstance(head, bool):
-            head = True
-        else:
-            head = False
-
-        print('Add left 2', head)
-
-        # await self.cmd_summon(channel, guild, author, voice_channel)
-
-        song_url = song_url.strip('<>')
-
+        song_url = ' '.join(message.content.split()[1:]).strip()
         await self.send_typing(channel)
 
-        if leftover_args:
-            song_url = ' '.join([song_url, *leftover_args])
+        # if leftover_args:
+        #     song_url = ' '.join([song_url, *leftover_args])
         leftover_args = None  # prevent some crazy shit happening down the line
 
         # Make sure forward slashes work properly in search queries
@@ -1993,7 +1982,8 @@ class MusicBot(discord.Client):
             if self.config.auto_playlist:
                 await self.on_player_finished_playing(player)
 
-        log.info("Joining {0.guild.name}/{0.name}".format(author.voice.channel))
+        if (voice_client is None) or (author.voice.channel != voice_client.channel):
+            log.info("Joining {0.guild.name}/{0.name}".format(author.voice.channel))
 
         return Response(self.str.get('cmd-summon-reply', 'Connected to `{0.name}`').format(author.voice.channel))
 
