@@ -2313,9 +2313,9 @@ class MusicBot(discord.Client):
         for i, item in enumerate(player.playlist, 1):
             song_duration = ftimedelta(timedelta(seconds=item.duration))
             if item.meta.get('channel', False) and item.meta.get('author', False):
-                nextline = self.str.get('cmd-queue-entry-author', '{0} -- `{1}` - `{2}` by `{3}`').format(i, item.title, song_duration, item.meta['author'].name).strip()
+                nextline = self.str.get('cmd-queue-entry-author', '{0} -- `{1}` - `[{2}]` by `{3}`').format(i, item.title, song_duration, item.meta['author'].name).strip()
             else:
-                nextline = self.str.get('cmd-queue-entry-noauthor', '{0} -- `{1}` - `{2}`').format(i, item.title, song_duration).strip()
+                nextline = self.str.get('cmd-queue-entry-noauthor', '{0} -- `{1}` - `[{2}]`').format(i, item.title, song_duration).strip()
 
             currentlinesum = sum(len(x) + 1 for x in lines)  # +1 is for newline char
 
