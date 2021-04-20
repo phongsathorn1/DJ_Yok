@@ -1363,15 +1363,19 @@ class MusicBot(discord.Client):
 
         if not isinstance(head, bool):
             head = False
+        
+        if not isinstance(ignore_msg, bool):
+            ignore_msg = False
 
         if not ignore_msg:
             song_url = ' '.join(message.content.split()[1:]).strip()
         
         song_url = song_url.strip('<>')
+        
         await self.send_typing(channel)
 
-        if leftover_args:
-            song_url = ' '.join([song_url, *leftover_args])
+        # if leftover_args:
+        #     song_url = ' '.join([song_url, *leftover_args])
         leftover_args = None  # prevent some crazy shit happening down the line
 
         # Make sure forward slashes work properly in search queries
@@ -1385,6 +1389,8 @@ class MusicBot(discord.Client):
         matches = re.search(playlistRegex, song_url)
         groups = matches.groups() if matches is not None else []
         song_url = "https://www.youtube.com/playlist?" + groups[0] if len(groups) > 0 else song_url
+
+        log.debug('song_url {0}'.format(song_url))
 
         if self.config._spotify:
             if 'open.spotify.com' in song_url:
