@@ -11,6 +11,7 @@ import pathlib
 import traceback
 import math
 import re
+import datetime
 
 import aiohttp
 import discord
@@ -1345,7 +1346,7 @@ class MusicBot(discord.Client):
 
         return await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url, head=True)
 
-    async def cmd_play(self, message, player, channel, author, permissions, leftover_args, song_url, head=False):
+    async def cmd_play(self, message, player, channel, author, permissions, leftover_args, song_url, head=False, ignore_msg=False):
         """
         Usage:
             {command_prefix}play song_link
@@ -1363,11 +1364,14 @@ class MusicBot(discord.Client):
         if not isinstance(head, bool):
             head = False
 
-        song_url = ' '.join(message.content.split()[1:]).strip()
+        if not ignore_msg:
+            song_url = ' '.join(message.content.split()[1:]).strip()
+        
+        song_url = song_url.strip('<>')
         await self.send_typing(channel)
 
-        # if leftover_args:
-        #     song_url = ' '.join([song_url, *leftover_args])
+        if leftover_args:
+            song_url = ' '.join([song_url, *leftover_args])
         leftover_args = None  # prevent some crazy shit happening down the line
 
         # Make sure forward slashes work properly in search queries
@@ -1401,7 +1405,8 @@ class MusicBot(discord.Client):
                         for i in res['tracks']['items']:
                             song_url = i['name'] + ' ' + i['artists'][0]['name']
                             log.debug('Processing {0}'.format(song_url))
-                            await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url)
+                            log.debug('RES {0}'.format(i))
+                            await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url, ignore_msg=True)
                         await self.safe_delete_message(procmesg)
 
                         return Response(self.str.get('cmd-play-spotify-album-queued', "Enqueued `{0}` with **{1}** songs.").format(res['name'], len(res['tracks']['items'])))
@@ -1421,7 +1426,7 @@ class MusicBot(discord.Client):
                         for i in res:
                             song_url = i['track']['name'] + ' ' + i['track']['artists'][0]['name']
                             log.debug('Processing {0}'.format(song_url))
-                            await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url)
+                            await self.cmd_play(message, player, channel, author, permissions, leftover_args, song_url, ignore_msg=True)
                         await self.safe_delete_message(procmesg)
                         return Response(self.str.get('cmd-play-spotify-playlist-queued', "Enqueued `{0}` with **{1}** songs.").format(parts[-1], len(res)))
                     
@@ -2306,10 +2311,11 @@ class MusicBot(discord.Client):
 
 
         for i, item in enumerate(player.playlist, 1):
+            song_duration = ftimedelta(timedelta(seconds=item.duration))
             if item.meta.get('channel', False) and item.meta.get('author', False):
-                nextline = self.str.get('cmd-queue-entry-author', '{0} -- `{1}` by `{2}`').format(i, item.title, item.meta['author'].name).strip()
+                nextline = self.str.get('cmd-queue-entry-author', '{0} -- `{1}` - `{2}` by `{3}`').format(i, item.title, song_duration, item.meta['author'].name).strip()
             else:
-                nextline = self.str.get('cmd-queue-entry-noauthor', '{0} -- `{1}`').format(i, item.title).strip()
+                nextline = self.str.get('cmd-queue-entry-noauthor', '{0} -- `{1}` - `{2}`').format(i, item.title, song_duration).strip()
 
             currentlinesum = sum(len(x) + 1 for x in lines)  # +1 is for newline char
 
@@ -2326,6 +2332,13 @@ class MusicBot(discord.Client):
         if not lines:
             lines.append(
                 self.str.get('cmd-queue-none', 'There are no songs queued! Queue something with {}play.').format(self.config.command_prefix))
+        else:
+            if len(player.playlist) < 1:
+                estimated_time = player.current_entry.duration - player.progress
+                time_until = datetime.timedelta(seconds=estimated_time)
+            else:
+                time_until = await player.playlist.estimate_time_until(len(player.playlist)+1, player)
+            lines.append('\n:timer: __Estimate time until end__ : `%s`' %ftimedelta(time_until))
 
         message = '\n'.join(lines)
         return Response(message, delete_after=30)
@@ -2577,7 +2590,7 @@ class MusicBot(discord.Client):
         return Response("Changed the bot's avatar.", delete_after=20)
 
 
-    async def cmd_disconnect(self, guild):
+    async def cmd_disconnect(self, guild, player):
         """
         Usage:
             {command_prefix}disconnect
